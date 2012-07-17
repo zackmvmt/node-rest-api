@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+
+	<head>
+
+		<meta charset="utf-8">
+		<title>CD CMS</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+		<style type="text/css">
+			body {
+				padding-top: 60px;
+				padding-bottom: 40px;
+			}
+			.test {
+				background-color: rgba(0,200,250,0.3);
+			}
+		</style>
+		<link href="css/bootstrap.css" rel="stylesheet">
+
+		<script src="js/jquery-1.7.2.min.js"></script>
+		<script src="js/underscore-min.js"></script>
+		<script src="js/backbone-min.js"></script>
+		<script src="js/bootstrap.js"></script>
+		
+		<script type="text/template" id="cd_item_template">
+			<td><%=_id%></td>
+			<td><%=artist%></td>
+			<td><%=album%></td>
+			<td>
+				<div class="btn btn-mini edit-cd">edit</div>
+				<div class="btn btn-mini btn-danger delete-cd">delete</div>
+			</td>
+		</script>
+		
+		<script type="text/template" id="app_template">
+			<div class="row">
+				<div class="span6" id="create-new"></div>
+			</div>
+			<div class="row">
+				<div class="span12" id="cd-list">
+					<h2>CD Collection</h2>
+					<p>
+						<table class="table table-bordered table-striped">
+							<thead>
+								<tr>
+									<th>_id</th>
+									<th>artist</th>
+									<th>album</th>
+									<th id="total_items"></th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</p>
+				</div>
+			</div>
+			<hr />
+			<footer>
+				<p>&copy; Dendrite Designs 2012</p>
+			</footer>
+		</script>
+		
+		<script type="text/template" id="add_cd_template">
+			<h2>Add New CD</h2>
+			<p>
+				<form class="well form-inline">
+					<input class="" type="text" id="artist" placeholder="Artist"/>
+					<input class="" type="text" id="album" placeholder="Album" />
+					<div class="btn btn-primary" id="add-cd">
+						<i class="icon-plus icon-white"></i>
+						Add
+					</div>
+				</form>
+			</p>
+		</script>
+		
+		<script type="text/template" id="add_error_template">
+			<div class="alert alert-error fade in hide">
+				<button type="button" class="close" data-dismiss="alert">x</button>
+				<div id="alert-content"><%=msg%></div>
+			</div>
+		</script>
+		
+		<script type="text/template" id="edit_cd_template">
+			<div class="modal-header">
+				<button type="button" class="close" data-dismiss="modal">x</button>
+				<h3>Edit CD</h3>
+			</div>
+			<div class="modal-body">
+				<p>
+					<form class="form-horizontal">
+						<div class="control-group">
+							<label class="control-label" for="artist">Artist</label>
+							<div class="controls">
+								<input type="text" id="artist" value="<%=artist%>">
+							</div>
+						</div>
+						<div class="control-group">
+							<label class="control-label" for="album">Album</label>
+							<div class="controls">
+								<input type="text" id="album" value="<%=album%>">
+							</div>
+						</div>
+					</form>
+				</p>
+			</div>
+			<div class="modal-footer">
+				<div class="btn" data-dismiss="modal">Close</div>
+				<div class="btn btn-primary" id="update-cd">Save Changes</div>
+			</div>
+		</script>
+		
+		<script type="text/javascript">
+			$(function() {
+				
+				// add sockets for events
+				
+				window.CD = Backbone.Model.extend();
+				
+				window.CDCollection = Backbone.Collection.extend({
+					model: CD,
+					url: 'http://127.0.0.1:8000/api/cds'
+				});
+				
+				window.CDOrganizer = Backbone.View.extend({
+					el: '#main-content',
+					template: _.template($('#app_template').html()),
+					initialize: function() {
+						this.render();
+					},
+					render: function() {
+						$('#edit-popup').modal({show: false});
+						$(this.el).html(this.template());
+						this.add = new AddCD;
+						this.list = new CDList;
+						this.edit = new EditCD;
+					}
+				});
+				
+				window.AddCD = Backbone.View.extend({
+					el: '#create-new',
+					template: _.template($('#add_cd_template').html()),
+					error: _.template($('#add_error_template').html()),
+					events: {
+						'click #add-cd': 'createCD'
+					},
+					initialize: function() {
+						this.render();
+					},
+					render: function() {
+						$(this.el).html(this.template());
+					},
+					createCD: function() {
+						var info = {};
+						info.artist = $(this.el).find('#artist').val();
+						info.album = $(this.el).find('#album').val();
+						$(this.el).find('.alert').remove();
+						if (!info.album) {
+							$(this.el).find('h2').after(this.error({msg: 'Please enter an album.'}));
+							$(this.el).find('.alert').fadeIn();
+						} if (!info.artist) {
+							$(this.el).find('h2').after(this.error({msg: 'Please enter an artist.'}));
+							$(this.el).find('.alert').fadeIn();
+						} if(!info.artist || !info.album) {
+							return false;
+						}
+						$.app.list.collection.create(info);
+						$(this.el).find('#artist').val('');
+						$(this.el).find('#album').val('');
+					}
+				});
+				
+				window.CDList = Backbone.View.extend({
+					el: '#cd-list table tbody',
+					collection: new CDCollection,
+					initialize: function() {
+						this.collection.bind('reset', this.render, this);
+						this.collection.bind('sync', this.render, this);
+						this.collection.fetch();
+					},
+					render: function() {
+						$(this.el).html('');
+						_.each(this.collection.models, function(cd) {
+							$(this.el).append(new CDItem({model: cd}).render().el);
+						}, this);
+						$('#total_items').html(this.collection.models.length + ' CDs');
+					}
+				});
+				
+				window.CDItem = Backbone.View.extend({
+					tagName: 'tr',
+					template: _.template($('#cd_item_template').html()),
+					events: {
+						'click .edit-cd': 'popupCD',
+						'click .delete-cd': 'deleteCD'
+					},
+					render: function() {
+						$(this.el).html(this.template(this.model.toJSON()));
+						return this;
+					},
+					popupCD: function() {
+						$.app.edit.model = this.model;
+						$.app.edit.render();
+					},
+					deleteCD: function(e) {
+						if ($(e.target).html() == 'delete') {
+							$(e.target).html('sure?');
+						} else {
+							this.model.destroy();
+							$(this.el).remove();
+						}
+					}
+				});
+				
+				window.EditCD = Backbone.View.extend({
+					el: '#edit-popup',
+					template: _.template($('#edit_cd_template').html()),
+					events: {
+						'click #update-cd': 'updateCD'
+					},
+					initialize: function() {
+						$(this.el).on('hide', this.closePopup);
+					},
+					render: function() {
+						$(this.el).html(this.template(this.model.toJSON()));
+						$(this.el).modal('show');
+						return this;
+					},
+					updateCD: function() {
+						var info = {};
+						info.artist = $(this.el).find('#artist').val();
+						info.album = $(this.el).find('#album').val();
+						$(this.el).find('#album').parent().parent().removeClass('error');
+						$(this.el).find('#artist').parent().parent().removeClass('error');
+						if (!info.album) {
+							$(this.el).find('#album').parent().parent().addClass('error');
+						} if (!info.artist) {
+							$(this.el).find('#artist').parent().parent().addClass('error');
+						} if(!info.artist || !info.album) {
+							return false;
+						}
+						this.model.save(info);
+						$(this.el).modal('hide');
+					},
+					closePopup: function() {
+						$(this.el).remove();
+					}
+					
+				});
+				
+				$.app = new CDOrganizer;
+
+			});
+		</script>
+
+	</head>
+
+	<body>
+
+		<div class="navbar navbar-fixed-top">
+			<div class="navbar-inner">
+				<div class="container">
+					<div class="brand">CD Organizer</div>
+				</div>
+			</div>
+		</div>
+		
+		<div class="container" id="main-content"></div>
+		
+		<div class="modal hide" id="edit-popup"></div>
+
+	</body>
+
+</html>
